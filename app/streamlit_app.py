@@ -103,6 +103,9 @@ with tab_result:
     if x_c > n_c or x_t > n_t or x_c == 0 or x_t == 0:
         st.error("转化数必须大于 0 且不超过用户数。")
         st.stop()
+    if x_c == n_c and x_t == n_t:
+        st.error("两组用户全部转化（转化率都是 100%），没有差异可检验。")
+        st.stop()
 
     srm = srm_check([n_c, n_t], [1 - expected_share, expected_share])
     if srm.srm_detected:
@@ -126,6 +129,9 @@ with tab_result:
     if r.p_value < alpha_r:
         direction = "高于" if r.abs_diff > 0 else "低于"
         st.success(f"**统计显著**：实验组转化率{direction}对照组。下一步请判断效果大小（看置信区间）是否达到业务上值得上线的门槛。")
+    elif np.isnan(mde_now):
+        st.warning("**统计不显著**：没有足够证据表明两组不同。对照组转化率太接近 0% 或 100%（或样本太小），"
+                   "当前样本量下任何提升都无法达到 80% 功效，请收集更多样本。")
     else:
         st.warning(f"**统计不显著**：没有足够证据表明两组不同。按当前样本量，80% 功效下能检测的最小效果约为 "
                    f"{mde_now*100:.3f} 个百分点（相对 {mde_now/r.p_control:.1%}）。"
@@ -146,7 +152,7 @@ with tab_result:
     with st.expander("📖 如何解读？"):
         st.markdown("""
 - **p 值**：假如两组真实转化率相同，观察到至少这么大差异的概率。它**不是**"实验组无效的概率"。
-- **置信区间包含 0** ⇔ 双侧检验不显著。区间的上下界告诉你效果"最好 / 最坏"可能有多大，比 p 值更有决策价值。
+- **置信区间包含 0** ≈ 双侧检验不显著。这里的区间总是双侧的，并且用非合并标准误，而 z 检验用合并标准误，所以 p 值非常接近 α 时两者可能不一致。区间的上下界告诉你效果"最好 / 最坏"可能有多大，比 p 值更有决策价值。
 - **SRM**：实际分流比例与设计比例差异过大（p < 0.001）时，说明实验系统有问题，结果不可信。
 - 不要在实验中途反复查看 p 值并"显著就停"，这会大幅提高假阳性率（见 notebook 03）。
 """)
