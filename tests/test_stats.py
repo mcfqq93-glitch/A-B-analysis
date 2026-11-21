@@ -82,3 +82,51 @@ def test_cuped_reduces_variance_and_keeps_mean_diff():
     raw = y[t == 1].mean() - y[t == 0].mean()
     adj = y_adj[t == 1].mean() - y_adj[t == 0].mean()
     assert adj == pytest.approx(raw, abs=0.1)
+
+
+# --- cross-checks for the remaining hand-written routines --------------------
+from scipy import stats as sps  # noqa: E402
+from statsmodels.stats.proportion import confint_proportions_2indep  # noqa: E402
+
+
+def test_abs_ci_matches_statsmodels_wald():
+    r = S.two_proportion_ztest(X_C, N_C, X_T, N_T)
+    lo, hi = confint_proportions_2indep(X_T, N_T, X_C, N_C, method="wald", compare="diff")
+    assert r.ci_abs == pytest.approx((lo, hi))
+
+
+def test_rel_ci_matches_statsmodels_log_ratio():
+    r = S.two_proportion_ztest(X_C, N_C, X_T, N_T)
+    lo, hi = confint_proportions_2indep(X_T, N_T, X_C, N_C, method="log", compare="ratio")
+    assert r.ci_rel == pytest.approx((lo - 1, hi - 1))
+
+
+def test_welch_matches_scipy():
+    rng = np.random.default_rng(1)
+    a, b = rng.exponential(5, 3_000), rng.exponential(5.4, 2_500)
+    r = S.welch_ttest(a, b)
+    res = sps.ttest_ind(b, a, equal_var=False)
+    assert r["t"] == pytest.approx(res.statistic)
+    assert r["p_value"] == pytest.approx(res.pvalue)
+    ci = res.confidence_interval(0.95)
+    assert r["ci"] == pytest.approx((ci.low, ci.high))
+
+
+def test_permutation_close_to_ztest():
+    r = S.two_proportion_ztest(X_C, N_C, X_T, N_T)
+    perm = S.permutation_test_binary(X_C, N_C, X_T, N_T, n_perm=50_000)
+    assert perm["p_value"] == pytest.approx(r.p_value, abs=0.01)
+
+
+def test_bootstrap_means_close_to_welch_ci():
+    rng = np.random.default_rng(2)
+    a, b = rng.normal(10, 3, 4_000), rng.normal(10.2, 3, 4_000)
+    boot = S.bootstrap_diff_in_means(a, b, n_boot=4_000)
+    ci = S.welch_ttest(a, b)["ci"]
+    assert boot["ci"][0] == pytest.approx(ci[0], abs=0.02)
+    assert boot["ci"][1] == pytest.approx(ci[1], abs=0.02)
+
+
+@pytest.mark.parametrize("p,n", [(1.0, 1_000), (0.0, 1_000), (0.995, 1_000)])
+def test_mde_returns_nan_when_unreachable(p, n):
+    assert np.isnan(S.minimum_detectable_effect(p, n))

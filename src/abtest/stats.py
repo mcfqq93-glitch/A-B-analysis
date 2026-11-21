@@ -164,10 +164,22 @@ def power_two_proportions(p_baseline: float, mde_abs: float, n_c: int,
 
 def minimum_detectable_effect(p_baseline: float, n_c: int, alpha: float = 0.05,
                               power: float = 0.8, ratio: float = 1.0) -> float:
-    """Smallest absolute lift detectable with the given sample (solved numerically)."""
+    """Smallest absolute lift detectable with the given sample (solved numerically).
+
+    Returns ``nan`` when no upward lift can reach the target power, e.g. when the
+    baseline is 0 or 1, or when the baseline is so close to 100% that even
+    p_baseline -> 1 is not detectable with ``n_c`` users.
+    """
     from scipy.optimize import brentq
+    if not 0 < p_baseline < 1:
+        return float("nan")
+    lo, hi = 1e-6, 1 - p_baseline - 1e-6
+    if hi <= lo:
+        return float("nan")
     f = lambda d: power_two_proportions(p_baseline, d, n_c, alpha, ratio) - power
-    return float(brentq(f, 1e-6, 1 - p_baseline - 1e-6))
+    if f(hi) < 0:
+        return float("nan")
+    return float(brentq(f, lo, hi))
 
 
 # ---------------------------------------------------------------------------
